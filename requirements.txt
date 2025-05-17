@@ -1,0 +1,7 @@
+opencv-python
+Pillow
+mss
+PyAutoGUI
+# pytesseract  # 先注释掉，Tesseract 在 Replit 上可能需要额外设置
+# paddlepaddle # 先注释掉，Paddle 安装包可能比较大，我们稍后按需添加
+# paddleocr    # 先注释掉
