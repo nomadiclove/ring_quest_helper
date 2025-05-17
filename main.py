@@ -124,7 +124,54 @@ def main():
                     # 后续可以根据这个类型执行不同逻辑
                     if "见多识广" in recognized_task_type:
                         print("当前任务是：见多识广")
-                        # TODO: 执行见多识广任务的后续步骤
+                        print("-" * 30)
+                        print("尝试定位并识别任务描述中的NPC名字...")
+    
+                        # 读取任务描述区域的配置
+                        try:
+                            task_desc_offset_y = config.getint('TaskTrackerUI', 'TaskDescriptionOffsetY')
+                            task_desc_region_width = config.getint('TaskTrackerUI', 'TaskDescriptionRegionWidth')
+                            task_desc_region_height = config.getint('TaskTrackerUI', 'TaskDescriptionRegionHeight')
+    
+                            # 读取绿色范围配置 (作为字符串，然后解析)
+                            # green_lower_str = config.get('TaskTrackerUI', 'NpcNameGreenLowerBound')
+                            # green_upper_str = config.get('TaskTrackerUI', 'NpcNameGreenUpperBound')
+                            # npc_green_lower = tuple(map(int, green_lower_str.split(',')))
+                            # npc_green_upper = tuple(map(int, green_upper_str.split(',')))
+    
+                        except (configparser.NoSectionError, configparser.NoOptionError, ValueError) as e:
+                            print(f"错误：配置文件中缺少或格式错误 TaskDescriptionUI 或颜色范围相关配置项: {e}")
+                            return # 或者continue到下一个循环 (如果是在循环中)
+    
+                        # 计算任务描述区域的ROI
+                        # roi_task_type_y 和 roi_task_type_h 是之前计算的任务类型ROI的y和高
+                        # X坐标：我们可以让它和任务类型区域的X坐标对齐
+                        roi_desc_x = roi_task_type_x 
+                        roi_desc_y = roi_task_type_y + roi_task_type_h + task_desc_offset_y
+                        roi_desc_w = task_desc_region_width
+                        roi_desc_h = task_desc_region_height
+    
+                        print(f"计算得到的任务描述ROI (游戏画面内坐标): X={roi_desc_x}, Y={roi_desc_y}, W={roi_desc_w}, H={roi_desc_h}")
+    
+                        # 从完整游戏画面截图中提取任务描述ROI图像数据
+                        if (roi_desc_x >= 0 and roi_desc_y >= 0 and
+                            roi_desc_x + roi_desc_w <= screenshot_bgr.shape[1] and
+                            roi_desc_y + roi_desc_h <= screenshot_bgr.shape[0]):
+    
+                            task_desc_roi_image_bgr = screenshot_bgr[roi_desc_y : roi_desc_y + roi_desc_h,
+                                                                     roi_desc_x : roi_desc_x + roi_desc_w]
+    
+                            cv2.imwrite("debug_task_description_roi.png", task_desc_roi_image_bgr)
+                            print("任务描述ROI区域已保存为 debug_task_description_roi.png")
+    
+                            # TODO: 接下来在这里调用 image_utils 中的颜色查找函数
+                            # 和 ocr_utils 中的识别函数来处理 task_desc_roi_image_bgr
+                            print("下一步：在此区域内查找绿色NPC名字。")
+    
+                        else:
+                            print("错误：计算得到的任务描述ROI超出了截图范围。请检查配置参数。")
+                            print(f"截图尺寸: W={screenshot_bgr.shape[1]}, H={screenshot_bgr.shape[0]}")
+                            print(f"任务类型ROI: Y={roi_task_type_y}, H={roi_task_type_h}")
                     # elif "其他任务类型" in recognized_task_type:
                         # ...
                 else:
