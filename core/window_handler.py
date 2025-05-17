@@ -222,3 +222,10 @@ if __name__ == '__main__':
                       print(f"  - '{win_obj.title}', 尺寸: ({win_obj.width}x{win_obj.height})")
           except Exception as e:
               print(f"获取所有窗口信息时出错: {e}")
+
+  except FileNotFoundError as e:
+      print(e)
+  except ValueError as e:
+      print(e)
+  except Exception as e: # 这个 except 对应最外层的 try
+      print(f"测试过程中发生未预料的错误: {e}")
