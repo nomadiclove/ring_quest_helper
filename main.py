@@ -2,6 +2,7 @@ import pyautogui # 用于截图时的颜色转换，以及可能的延时
 import cv2 # 用于将 Pillow Image 转换为 NumPy array
 from PIL import Image # Pyautogui screenshot 返回的是 Pillow Image
 import os
+import configparser
 
 # 相对导入我们自己的模块
 from core.window_handler import WindowHandler
@@ -59,18 +60,80 @@ def main():
                                      threshold=0.7) 
 
         if match_result:
-            x, y, w, h, confidence = match_result
+            header_x, header_y, header_w, header_h, confidence = match_result
             print(f"成功找到 '任务追踪' 标题模板！")
-            print(f"  在游戏画面中的相对坐标: X={x}, Y={y}")
-            print(f"  模板尺寸: Width={w}, Height={h}")
+            print(f"  在游戏画面中的相对坐标: X={header_x}, Y={header_y}")
+            print(f"  模板尺寸: Width={header_w}, Height={header_h}")
             print(f"  匹配置信度: {confidence:.4f}")
-
-            # 可选：在截图上画出匹配区域并显示/保存 (用于调试)
-            # cv2.rectangle(screenshot_bgr, (x, y), (x + w, y + h), (0, 0, 255), 2) # 红色框
-            # cv2.putText(screenshot_bgr, f'{confidence:.2f}', (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1)
-            # cv2.imwrite("main_test_match_result.png", screenshot_bgr)
-            # print("带有匹配结果的截图已保存为 main_test_match_result.png")
-
+    
+            # --- 新增：识别任务类型 ---
+            print("-" * 30) # 分隔符
+            print("尝试识别任务类型...")
+    
+            # 1. 读取OCR相关的配置
+            config = configparser.ConfigParser()
+            config_path = os.path.join(base_dir, 'config', 'settings.ini')
+            if not os.path.exists(config_path):
+                print(f"错误：配置文件 {config_path} 未找到，无法进行OCR。")
+                return
+            config.read(config_path, encoding='utf-8')
+    
+            try:
+                task_type_offset_y = config.getint('TaskTrackerUI', 'TaskTypeOffsetY')
+                task_type_region_height = config.getint('TaskTrackerUI', 'TaskTypeRegionHeight')
+                task_type_region_width = config.getint('TaskTrackerUI', 'TaskTypeRegionWidth')
+            except (configparser.NoSectionError, configparser.NoOptionError) as e:
+                print(f"错误：配置文件中缺少 TaskTrackerUI 相关配置项: {e}")
+                return
+    
+            # 2. 计算任务类型区域的ROI (相对于1366x768游戏画面)
+            # ROI的左上角x坐标可以与header_x对齐，或者稍微向左一点，如果任务类型文本可能更靠左
+            # 我们先假设与header_x对齐，或者可以从配置中读取一个X偏移
+            roi_task_type_x = header_x 
+            roi_task_type_y = header_y + header_h + task_type_offset_y
+            roi_task_type_w = task_type_region_width
+            roi_task_type_h = task_type_region_height
+    
+            print(f"计算得到的任务类型ROI (游戏画面内坐标): X={roi_task_type_x}, Y={roi_task_type_y}, W={roi_task_type_w}, H={roi_task_type_h}")
+    
+            # 3. 从完整游戏画面截图中提取ROI图像数据
+            # 确保ROI坐标在截图范围内
+            if (roi_task_type_x >= 0 and roi_task_type_y >= 0 and
+                roi_task_type_x + roi_task_type_w <= screenshot_bgr.shape[1] and # shape[1] is width
+                roi_task_type_y + roi_task_type_h <= screenshot_bgr.shape[0]):   # shape[0] is height
+    
+                task_type_roi_image_bgr = screenshot_bgr[roi_task_type_y : roi_task_type_y + roi_task_type_h,
+                                                         roi_task_type_x : roi_task_type_x + roi_task_type_w]
+    
+                # (可选) 保存一下这个ROI截图，方便调试ROI是否正确
+                # cv2.imwrite("debug_task_type_roi.png", task_type_roi_image_bgr)
+                # print("任务类型ROI区域已保存为 debug_task_type_roi.png")
+    
+                # 4. 调用OCR函数进行识别
+                # 需要从 core.ocr_utils 导入函数
+                from core.ocr_utils import recognize_text_from_image_data 
+    
+                # 对于任务类型这种短文本，PSM=7 (单行文本) 或 PSM=13 (原始单行) 可能效果更好
+                # PSM=6 也可以尝试
+                recognized_task_type = recognize_text_from_image_data(task_type_roi_image_bgr, lang='chi_sim', psm=7)
+    
+                if recognized_task_type:
+                    print(f"识别出的任务类型: '{recognized_task_type}'")
+                    # 后续可以根据这个类型执行不同逻辑
+                    if "见多识广" in recognized_task_type:
+                        print("当前任务是：见多识广")
+                        # TODO: 执行见多识广任务的后续步骤
+                    # elif "其他任务类型" in recognized_task_type:
+                        # ...
+                else:
+                    print("未能识别出任务类型文本。请检查：")
+                    print("  1. ROI区域是否准确切割到了任务类型文本？(查看 debug_task_type_roi.png)")
+                    print("  2. OCR预处理或PSM模式是否需要调整？")
+                    print("  3. 配置文件中的偏移和尺寸是否准确？")
+            else:
+                print("错误：计算得到的任务类型ROI超出了截图范围。请检查配置参数和模板匹配结果。")
+                print(f"截图尺寸: W={screenshot_bgr.shape[1]}, H={screenshot_bgr.shape[0]}")
+    
         else:
             print("未能找到 '任务追踪' 标题模板。请检查：")
             print("  1. 模板图片 'task_tracker_header.png' 是否清晰且准确？")
