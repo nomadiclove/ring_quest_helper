@@ -89,7 +89,9 @@ def main():
             # 2. 计算任务类型区域的ROI (相对于1366x768游戏画面)
             # ROI的左上角x坐标可以与header_x对齐，或者稍微向左一点，如果任务类型文本可能更靠左
             # 我们先假设与header_x对齐，或者可以从配置中读取一个X偏移
-            roi_task_type_x = header_x 
+            task_type_offset_x = config.getint('TaskTrackerUI', 'TaskTypeOffsetX')
+            
+            roi_task_type_x = header_x + task_type_offset_x
             roi_task_type_y = header_y + header_h + task_type_offset_y
             roi_task_type_w = task_type_region_width
             roi_task_type_h = task_type_region_height
