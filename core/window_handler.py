@@ -28,27 +28,69 @@ class WindowHandler:
         self.geometry = None # 存储窗口的几何信息 (x, y, width, height)
 
     def find_window(self):
-        """
-        根据配置文件中的标题查找游戏窗口。
-        """
-        try:
-            # pyautogui.getWindowsWithTitle() 返回一个列表，即使只找到一个
-            windows = pyautogui.getWindowsWithTitle(self.window_title_pattern)
-            if not windows:
-                print(f"错误：未找到标题包含 '{self.window_title_pattern}' 的窗口。")
+            """
+            根据配置文件中的标题查找游戏窗口。
+            如果找到多个，会尝试根据固定尺寸 (1378x831) 来选择。
+            """
+            try:
+                all_matching_windows = pyautogui.getWindowsWithTitle(self.window_title_pattern)
+
+                if not all_matching_windows:
+                    print(f"错误：未找到标题包含 '{self.window_title_pattern}' 的窗口。")
+                    self.window = None
+                    return None
+
+                if len(all_matching_windows) == 1:
+                    # 如果只有一个匹配，我们仍需检查其尺寸是否合理
+                    win = all_matching_windows[0]
+                    # 允许一定的容差，例如 +/- 5像素
+                    if abs(win.width - 1378) <= 5 and abs(win.height - 831) <= 5:
+                        self.window = win
+                        print(f"成功找到唯一窗口且尺寸匹配: '{self.window.title}', 尺寸: ({self.window.width}x{self.window.height})")
+                    else:
+                        print(f"找到唯一窗口 '{win.title}'，但其尺寸 ({win.width}x{win.height}) 与预期的 1378x831 不符。")
+                        print("请检查游戏窗口是否为预期大小，或是否有其他同名窗口。")
+                        # 打印所有窗口以供调试
+                        print("当前所有可见窗口标题:")
+                        for t_win in pyautogui.getAllWindows():
+                            if t_win.title: 
+                                print(f"  - '{t_win.title}', 尺寸: ({t_win.width}x{t_win.height})")
+                        self.window = None # 尺寸不符，视为未找到
+                        return None
+                else: # 找到多个窗口
+                    print(f"找到多个标题包含 '{self.window_title_pattern}' 的窗口:")
+                    potential_main_window = None
+
+                    for i, win in enumerate(all_matching_windows):
+                        print(f"  {i+1}. 标题: '{win.title}', 位置: ({win.left},{win.top}), 尺寸: ({win.width}x{win.height})")
+                        # 检查尺寸是否非常接近 1378x831 (允许微小误差, e.g., +/- 5 pixels)
+                        if abs(win.width - 1378) <= 5 and abs(win.height - 831) <= 5:
+                            if potential_main_window is not None:
+                                # 如果已找到一个尺寸匹配的，现在又找到一个，说明有问题
+                                print(f"警告：找到多个尺寸接近 1378x831 的窗口。这不符合预期。")
+                                print(f"  - 已有: '{potential_main_window.title}'")
+                                print(f"  - 新的: '{win.title}'")
+                                # 这种情况下，我们无法确定哪个是主窗口，选择不返回
+                                self.window = None
+                                return None 
+                            potential_main_window = win
+
+                    if potential_main_window:
+                        print(f"根据固定尺寸 1378x831 选择: '{potential_main_window.title}' 作为主窗口。")
+                        self.window = potential_main_window
+                    else:
+                        print(f"在多个匹配窗口中，未能找到尺寸接近 1378x831 的窗口。")
+                        self.window = None
+                        return None
+
+                if self.window:
+                    self._update_geometry()
+                return self.window
+
+            except Exception as e:
+                print(f"查找窗口时发生错误: {e}")
                 self.window = None
                 return None
-
-            # 通常我们假设只有一个匹配的主窗口，或者取第一个
-            # 如果有多个完全匹配的窗口，可能需要更复杂的逻辑来区分
-            self.window = windows[0] 
-            print(f"成功找到窗口: '{self.window.title}'")
-            self._update_geometry() # 找到窗口后更新其几何信息
-            return self.window
-        except Exception as e:
-            print(f"查找窗口时发生错误: {e}")
-            self.window = None
-            return None
 
     def _update_geometry(self):
         """
@@ -65,7 +107,6 @@ class WindowHandler:
                 self.geometry = None
         else:
             self.geometry = None
-
 
     def activate_window(self):
         """
@@ -101,91 +142,83 @@ class WindowHandler:
 
     def get_inner_game_area(self):
         """
-        计算并返回游戏内部画面的区域 (x, y, width, height)。
-        目前这是一个占位符，需要根据实际情况调整。
+        计算并返回游戏内部画面的区域 (x, y, width, height) 相对于屏幕。
+        基于窗口总尺寸 1378x831 和内部游戏画面 1366x768。
         """
         if not self.geometry:
-            print("错误：无法获取窗口外部几何信息，不能计算内部区域。")
-            return None
+            self.find_window() # 尝试再次查找窗口以获取geometry
+            if not self.geometry:
+                print("错误：无法获取窗口外部几何信息，不能计算内部区域。")
+                return None
+      
+        # 确保获取到的窗口尺寸是我们预期的，否则偏移计算可能无意义
+        # 允许一定的容差
+        if not (abs(self.geometry[2] - 1378) <= 5 and abs(self.geometry[3] - 831) <= 5) :
+            print(f"警告：当前窗口尺寸 ({self.geometry[2]}x{self.geometry[3]}) 与预期的 1378x831 不符。")
+            print("内部区域计算可能不准确。")
+            # 即使尺寸不符，也尝试按预期偏移计算，但给出警告
+            # 或者这里可以选择返回 None
+      
+        # X_OFFSET: 从窗口最左边到游戏内部画面最左边的距离 (左边框厚度)
+        X_OFFSET = 6  # (1378 - 1366) / 2 假设左右对称
+        # Y_OFFSET: 从窗口最顶端到游戏内部画面最顶端的距离 (标题栏 + 上边框厚度)
+        Y_OFFSET = 57 # (831 - 768 - 6 (假设下边框也是6)) = 57.  或者直接用用户提供的 28/29.
+                      # 如果 Y_OFFSET 是 28, 那么下边框是 63 - 28 = 35
+                      # 如果 Y_OFFSET 是 29, 那么下边框是 63 - 29 = 34
+                      # 我们先用28，如果截图有偏差再调整
+      
+        inner_x = self.geometry[0] + X_OFFSET
+        inner_y = self.geometry[1] + Y_OFFSET
+      
+        # 内部固定宽高
+        inner_width = 1366
+        inner_height = 768
+      
+        print(f"计算得到的内部游戏区域: X={inner_x}, Y={inner_y}, Width={inner_width}, Height={inner_height}")
+        return (inner_x, inner_y, inner_width, inner_height)
 
-        # TODO: 根据用户描述，外部窗口比内部1366x768大。
-        # 我们需要确定标题栏和边框的厚度。
-        # 假设：
-        # title_bar_height = 30  # 估算值，需要用户测量
-        # border_thickness_left = 5 # 估算值
-        # border_thickness_right = 5 # 估算值
-        # border_thickness_bottom = 5 # 估算值
-
-        # inner_x = self.geometry[0] + border_thickness_left
-        # inner_y = self.geometry[1] + title_bar_height
-        # inner_width = 1366 # 根据用户描述固定
-        # inner_height = 768 # 根据用户描述固定
-        
-        # 另一种思路：如果外部窗口大小是固定的，并且内部大小也是固定的
-        # 那么偏移量也是固定的。
-        # 或者，如果窗口的 client area 可以直接获取，那是最好的。
-
-        print("注意: get_inner_game_area() 当前是占位符，需要精确实现。")
-        # 暂时返回整个窗口区域减去一些估算值，或者直接返回固定值（如果窗口位置固定）
-        # 更可靠的做法是让用户测量或使用工具获取精确偏移
-        
-        # 作为一个非常初步的假设，如果游戏窗口总是最大化或者固定大小，
-        # 并且其左上角是 (self.geometry[0], self.geometry[1])
-        # 那么内部区域的左上角相对于屏幕的坐标，需要减去标题栏和左边框
-        # inner_x = self.geometry[0] + X_OFFSET_FROM_WINDOW_LEFT_TO_GAME_AREA_LEFT
-        # inner_y = self.geometry[1] + Y_OFFSET_FROM_WINDOW_TOP_TO_GAME_AREA_TOP
-        # return (inner_x, inner_y, 1366, 768)
-        
-        # 目前，我们先返回外部几何信息，提示用户这部分需要精确化
-        print("将暂时返回外部窗口的左上角坐标加上固定的1366x768作为内部区域参考，这通常不准确。")
-        return (self.geometry[0], self.geometry[1], 1366, 768)
-
-
+      
 # --- 测试代码 ---
+
 if __name__ == '__main__':
-    print("正在测试 WindowHandler...")
-    # 确保你的 config/settings.ini 文件中的 WindowTitle 设置正确
-    # 例如: WindowTitle = 大话西游2经典版
+  print("正在测试 WindowHandler...")
+  try:
+      handler = WindowHandler()
+      print(f"将使用配置文件: {handler.config_path}")
+      print(f"将查找窗口标题包含: '{handler.window_title_pattern}'")
 
-    try:
-        handler = WindowHandler()
-        print(f"将使用配置文件: {handler.config_path}")
-        print(f"将查找窗口标题包含: '{handler.window_title_pattern}'")
+      game_window = handler.find_window()
 
-        game_window = handler.find_window()
+      if game_window:
+          print(f"找到的窗口对象: {game_window}")
+          print(f"窗口标题: {game_window.title}")
+          print(f"窗口外部几何信息 (从handler.geometry获取): {handler.geometry}")
 
-        if game_window:
-            print(f"找到的窗口对象: {game_window}")
-            print(f"窗口标题: {game_window.title}") # 打印实际匹配到的完整标题
-            print(f"窗口外部几何信息 (从handler.geometry获取): {handler.geometry}")
-            
-            # 尝试激活窗口
-            handler.activate_window()
-            pyautogui.sleep(1) # 等待1秒，看看窗口是否到最前
+          handler.activate_window()
+          pyautogui.sleep(0.5) # 等待窗口激活
 
-            # 获取（当前占位的）内部游戏区域
-            inner_area = handler.get_inner_game_area()
-            if inner_area:
-                print(f"估算的内部游戏区域 (相对于屏幕): X={inner_area[0]}, Y={inner_area[1]}, Width={inner_area[2]}, Height={inner_area[3]}")
-                # 后续截图可以基于这个 inner_area
-                # screenshot = pyautogui.screenshot(region=inner_area)
-                # screenshot.save("game_inner_area_test.png")
-                # print("已尝试截取内部游戏区域并保存为 game_inner_area_test.png")
+          inner_area = handler.get_inner_game_area()
+          if inner_area:
+              print(f"精确计算的内部游戏区域 (相对于屏幕): X={inner_area[0]}, Y={inner_area[1]}, Width={inner_area[2]}, Height={inner_area[3]}")
 
-        else:
-            print("未能找到游戏窗口。请检查：")
-            print("1. 游戏是否已运行？")
-            print(f"2. config/settings.ini 中的 WindowTitle ('{handler.window_title_pattern}') 是否与游戏窗口标题的一部分精确匹配？")
-            print("   (注意大小写，如果 pyautogui 区分的话)")
-            all_titles = pyautogui.getAllTitles()
-            print("当前所有可见窗口标题:")
-            for t in all_titles:
-                if t: # 过滤空标题
-                    print(f"  - {t}")
-
-    except FileNotFoundError as e:
-        print(e)
-    except ValueError as e:
-        print(e)
-    except Exception as e:
-        print(f"测试过程中发生未预料的错误: {e}")
+              # 取消以下注释来测试截图
+              try:
+                  screenshot = pyautogui.screenshot(region=inner_area)
+                  screenshot_path = "game_inner_area_test.png"
+                  screenshot.save(screenshot_path)
+                  # 获取绝对路径方便查找
+                  abs_path = os.path.abspath(screenshot_path)
+                  print(f"已尝试截取内部游戏区域并保存为: {abs_path}")
+              except Exception as e:
+                  print(f"截图或保存时发生错误: {e}")
+      else:
+          print("未能找到符合条件的游戏主窗口。请检查：")
+          print("1. 游戏是否已运行且窗口大小正常 (约1378x831)？")
+          print(f"2. config/settings.ini 中的 WindowTitle ('{handler.window_title_pattern}') 是否正确？")
+          print("当前所有可见窗口标题和尺寸:")
+          try:
+              for win_obj in pyautogui.getAllWindows():
+                  if win_obj.title: # 过滤空标题
+                      print(f"  - '{win_obj.title}', 尺寸: ({win_obj.width}x{win_obj.height})")
+          except Exception as e:
+              print(f"获取所有窗口信息时出错: {e}")
