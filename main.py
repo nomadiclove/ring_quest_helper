@@ -106,8 +106,8 @@ def main():
                                                          roi_task_type_x : roi_task_type_x + roi_task_type_w]
     
                 # (可选) 保存一下这个ROI截图，方便调试ROI是否正确
-                # cv2.imwrite("debug_task_type_roi.png", task_type_roi_image_bgr)
-                # print("任务类型ROI区域已保存为 debug_task_type_roi.png")
+                cv2.imwrite("debug_task_type_roi.png", task_type_roi_image_bgr)
+                print("任务类型ROI区域已保存为 debug_task_type_roi.png")
     
                 # 4. 调用OCR函数进行识别
                 # 需要从 core.ocr_utils 导入函数
