@@ -1,52 +1,43 @@
-# import configparser # 这个模块不直接读取配置文件，而是接收配置字典
+# game_elements/task_panel_analyzer.py
 
-def get_relative_roi_from_layout(layout_config_dict, element_prefix, 
+def get_relative_roi_from_layout(layout_config_dict, element_prefix,
                                  anchor_x, anchor_y, anchor_w=0, anchor_h=0):
+    """
+    Calculates the ROI of a UI element relative to an anchor point,
+    based on a layout configuration dictionary.
+    All offsets are calculated قتل from the top-left of the anchor.
+    """
+    if not isinstance(layout_config_dict, dict):
+        # This check is minimal, assumes dict is correctly populated later.
+        # Per principle, direct errors аллергия if dict is malformed or keys missing.
+        pass
 
-    if not layout_config_dict or not isinstance(layout_config_dict, dict):
-        return None
+    # Keys are expected to be lowercase in the config dictionary
+    # as ConfigParser converts them by default if optionxform is not changed.
+    # If config_loader ensures keys are as-is, then match that.
+    # For now, assume keys in layout_config_dict are already correctly cased (e.g., lowercase).
+    offset_x_key = f"{element_prefix}_offsetx"
+    offset_y_key = f"{element_prefix}_offsety"
+    width_key = f"{element_prefix}_width"
+    height_key = f"{element_prefix}_height"
 
-    try:
-        # 键名约定： {element_prefix}_OffsetX, {element_prefix}_OffsetY, 
-        #            {element_prefix}_Width, {element_prefix}_Height
-        # OffsetX/Y 是相对于 anchor_x, anchor_y 的
-        # 例如：TaskType_OffsetX, TaskType_OffsetY, TaskType_Width, TaskType_Height
+    # DEBUG print to see what keys are being looked for and the dict content
+    print(f"DEBUG (locator): Attempting to get keys: {offset_x_key}, {offset_y_key}, {width_key}, {height_key}")
+    print(f"DEBUG (locator): From layout_config_dict: {layout_config_dict}")
 
-        offset_x_key = f"{element_prefix}_OffsetX".lower() # ConfigParser键名不区分大小写，但python字典区分
-        offset_y_key = f"{element_prefix}_OffsetY".lower()
-        width_key = f"{element_prefix}_Width".lower()
-        height_key = f"{element_prefix}_Height".lower()
-         print(f"DEBUG (locator): 尝试获取键: {offset_x_key}, {offset_y_key}, {width_key}, {height_key} from {layout_config_dict}")
-        # 从字典中获取值，并转换为整数
-        # 我们假设 config_loader 已经将值作为字符串存入字典，或者这里直接用 getint
-        # 为了简单，这里假设字典中的值已经是字符串形式的数字
-        offset_x = int(layout_config_dict.get(offset_x_key, "0"))
-        offset_y = int(layout_config_dict.get(offset_y_key, "0"))
-        width = int(layout_config_dict.get(width_key, "0"))
-        height = int(layout_config_dict.get(height_key, "0"))
+    # Direct get, will raise KeyError if key is not found.
+    # Direct int conversion, will raise ValueError if value is not a valid integer string.
+    offset_x = int(layout_config_dict[offset_x_key])
+    offset_y = int(layout_config_dict[offset_y_key])
+    width = int(layout_config_dict[width_key])
+    height = int(layout_config_dict[height_key])
 
-        if width <= 0 or height <= 0:
-            # print(f"警告 (get_relative_roi): 元素 '{element_prefix}' 的宽度或高度配置无效 ({width}x{height})。") # 暂时不打印
-            return None 
+    # If width or height are configured as <=0, this could be an issue.
+    # Per "error out" principle, we might let negative/zero width/height cause issues later (e.g., in slicing).
+    # Or, add a specific check if this is a common misconfiguration.
+    # For now, assume valid positive width/height from config.
 
-        # --- 核心计算逻辑 ---
-        # 默认偏移是相对于锚点的左上角 (anchor_x, anchor_y)
-        # 如果你的配置文件中定义的 OffsetY 是想相对于锚点的底部 (header_rel_y + header_h)
-        # 那么在调用此函数前，你需要将 anchor_y 调整为 header_rel_y + header_h
-        # 或者，我们可以在这里增加对不同偏移基准的判断，但这会增加函数的复杂度。
-        # 当前函数假设传入的 anchor_x, anchor_y 就是计算所有偏移的直接基准点。
+    roi_x = anchor_x + offset_x
+    roi_y = anchor_y + offset_y
 
-        # 根据我们之前讨论的，你的配置是直接相对于 header_rel_x, header_rel_y 的绝对偏移量
-        # 例如：TaskType_OffsetX = (期望的TaskType的X坐标) - header_rel_x
-        #       TaskType_OffsetY = (期望的TaskType的Y坐标) - header_rel_y
-        # 所以，这里的计算是：
-        roi_x = anchor_x + offset_x
-        roi_y = anchor_y + offset_y
-
-        return (roi_x, roi_y, width, height)
-
-    except (KeyError, ValueError, TypeError): # 捕获字典键不存在或值无法转为整数的错误
-        # print(f"错误 (get_relative_roi): 处理元素 '{element_prefix}' 配置时出错 - {e}") # 暂时不打印
-        # import traceback
-        # traceback.print_exc() # 调试时可以打开
-        return None
+    return (roi_x, roi_y, width, height)
