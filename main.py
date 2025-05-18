@@ -165,7 +165,7 @@ def main():
                                     cv2.rectangle(task_desc_roi_with_boxes, (gx, gy), (gx + gw, gy + gh), (0, 0, 255), 1)
                                     green_blob_image = task_desc_roi_image_bgr[gy:gy+gh, gx:gx+gw]
 
-                                    # cv2.imwrite(f"debug_green_blob_{i+1}.png", green_blob_image)
+                                    cv2.imwrite(f"debug_green_blob_{i+1}.png", green_blob_image)
 
                                     npc_name_text = recognize_text_from_image_data(green_blob_image, lang='chi_sim', psm=8)
                                     if npc_name_text:
