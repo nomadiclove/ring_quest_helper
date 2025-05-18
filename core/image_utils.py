@@ -53,41 +53,42 @@ def find_template(screen_image_data, template_image_path, threshold=0.8):
         return None
 
 
-def find_contours_by_color(image_data_bgr, lower_bound_bgr, upper_bound_bgr, min_contour_area=1): # 注意 min_contour_area 默认值可以先设为1
-    """
-    在给定的BGR图像数据中，根据颜色范围查找轮廓。
-    ... (函数文档字符串不变) ...
-    """
+def find_contours_by_color(image_data_bgr, lower_bound_bgr, upper_bound_bgr, min_contour_area=1):
     if image_data_bgr is None:
         print("错误 (find_contours_by_color): 输入图像数据为空。")
         return []
 
     try:
         mask = cv2.inRange(image_data_bgr, np.array(lower_bound_bgr), np.array(upper_bound_bgr))
-        cv2.imwrite("debug_color_mask.png", mask) # 确保这张图生成在项目根目录
+        # 将原始mask保存在项目根目录，方便确认路径和内容
+        cv2.imwrite(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "debug_color_mask.png"), mask)
         print("颜色过滤掩码已保存为 debug_color_mask.png (find_contours_by_color)")
 
-        # kernel = np.ones((2,2), np.uint8)
-        # dilated_mask = cv2.dilate(mask, kernel, iterations=1)
-        # cv2.imwrite("debug_dilated_mask.png", dilated_mask)
-        # print("膨胀后的掩码已保存为 debug_dilated_mask.png")
-        # contours, _ = cv2.findContours(dilated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # --- 新增：形态学膨胀操作 ---
+        # 定义一个小的核 (kernel)
+        # kernel_size = (2, 2) # 可以尝试 2x2, 3x3
+        kernel_size = (3, 3) # 稍微大一点的核可能效果更好
+        kernel = np.ones(kernel_size, np.uint8)
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) # 先用原始 mask 测试
+        # 执行膨胀操作，迭代次数可以调整 (iterations=1 或 2)
+        dilated_mask = cv2.dilate(mask, kernel, iterations=1) 
+
+        # 保存膨胀后的mask以供调试
+        cv2.imwrite(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "debug_dilated_mask.png"), dilated_mask)
+        print("膨胀后的掩码已保存为 debug_dilated_mask.png")
+        # --- 形态学操作结束 ---
+
+        # 使用膨胀后的掩码进行轮廓查找
+        contours, _ = cv2.findContours(dilated_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         bounding_boxes = []
-        print(f"原始找到的轮廓数量 (find_contours_by_color): {len(contours)}") # 打印原始轮廓数量
+        print(f"原始找到的轮廓数量 (find_contours_by_color, after dilation): {len(contours)}")
         if contours:
             for i, contour in enumerate(contours):
                 area = cv2.contourArea(contour)
                 x, y, w, h = cv2.boundingRect(contour)
-                print(f"  - 原始轮廓 {i}: x={x}, y={y}, w={w}, h={h}, 面积={area:.2f}") # 打印每个原始轮廓的信息
-
-                # 暂时将所有找到的轮廓都加入，无论面积大小，以便调试
-                bounding_boxes.append((x, y, w, h)) 
-
-                # if area >= min_contour_area: # 先注释掉面积过滤
-                #     bounding_boxes.append((x, y, w, h))
+                print(f"  - 原始轮廓 {i}: x={x}, y={y}, w={w}, h={h}, 面积={area:.2f}")
+                bounding_boxes.append((x, y, w, h)) # 暂时不过滤面积
 
         if bounding_boxes:
             bounding_boxes.sort(key=lambda bbox: (bbox[1], bbox[0]))
@@ -97,7 +98,7 @@ def find_contours_by_color(image_data_bgr, lower_bound_bgr, upper_bound_bgr, min
     except Exception as e:
         print(f"颜色轮廓查找过程中发生错误 (find_contours_by_color): {e}")
         import traceback
-        traceback.print_exc() # 打印详细错误
+        traceback.print_exc()
         return []
 
 
