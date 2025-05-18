@@ -3,6 +3,7 @@ import cv2 # 用于将 Pillow Image 转换为 NumPy array
 from PIL import Image # Pyautogui screenshot 返回的是 Pillow Image
 import os
 import configparser
+from core.image_utils import find_contours_by_color 
 
 # 相对导入我们自己的模块
 from core.window_handler import WindowHandler
@@ -167,21 +168,72 @@ def main():
                             # TODO: 接下来在这里调用 image_utils 中的颜色查找函数
                             # 和 ocr_utils 中的识别函数来处理 task_desc_roi_image_bgr
                             print("下一步：在此区域内查找绿色NPC名字。")
-    
+
+                        try:
+                            green_lower_str = config.get('TaskTrackerUI', 'NpcNameGreenLowerBound')
+                            green_upper_str = config.get('TaskTrackerUI', 'NpcNameGreenUpperBound')
+                            npc_green_lower = tuple(map(int, green_lower_str.split(',')))
+                            npc_green_upper = tuple(map(int, green_upper_str.split(',')))
+                        except (configparser.NoSectionError, configparser.NoOptionError, ValueError) as e:
+                            print(f"错误：配置文件中缺少或格式错误 NpcNameGreenLowerBound/UpperBound 配置项: {e}")
+                            return
+
+                        print(f"使用绿色范围进行查找: Lower={npc_green_lower}, Upper={npc_green_upper}")
+                        # 在任务描述ROI中查找绿色轮廓
+                        # min_contour_area 可以根据实际情况调整，以过滤掉太小的绿色噪点
+                        green_blobs_bboxes = find_contours_by_color(task_desc_roi_image_bgr, 
+                                                                    npc_green_lower, 
+                                                                    npc_green_upper, 
+                                                                    min_contour_area=15) # 初始值，可以调整
+                        if green_blobs_bboxes:
+                            print(f"在任务描述区域中找到 {len(green_blobs_bboxes)} 个潜在的绿色文本块:")
+
+                            # 创建一个副本用于绘制调试框
+                            task_desc_roi_with_boxes = task_desc_roi_image_bgr.copy()
+
+                            for i, (gx, gy, gw, gh) in enumerate(green_blobs_bboxes):
+                                print(f"  绿色块 {i+1}: X={gx}, Y={gy}, W={gw}, H={gh} (相对于任务描述ROI)")
+
+                                # 在副本上画框
+                                cv2.rectangle(task_desc_roi_with_boxes, (gx, gy), (gx + gw, gy + gh), (0, 0, 255), 1) # 红色框
+
+                                # 切割出这个绿色块进行OCR
+                                green_blob_image = task_desc_roi_image_bgr[gy:gy+gh, gx:gx+gw]
+
+                                # (可选) 保存每个小绿色块的图片用于调试OCR
+                                # cv2.imwrite(f"debug_green_blob_{i+1}.png", green_blob_image)
+
+                                # 对绿色块进行OCR
+                                # PSM模式可能需要调整，对于单个词或短语，7, 8, 13 比较常用
+                                npc_name_text = recognize_text_from_image_data(green_blob_image, lang='chi_sim', psm=8)
+
+                                if npc_name_text:
+                                    print(f"    识别出的文本: '{npc_name_text}'")
+                                    # TODO: 在这里判断是否是目标NPC名字，然后计算点击坐标并点击
+                                    # 例如，如果 npc_name_text == "贾 有钱" (注意空格可能存在)
+                                    # 点击坐标 (相对于游戏画面1366x768的左上角):
+                                    # click_x_game = roi_desc_x + gx + gw // 2 # 点击块的中心
+                                    # click_y_game = roi_desc_y + gy + gh // 2
+                                    # print(f"    准备点击NPC: '{npc_name_text}' 在游戏画面坐标: ({click_x_game}, {click_y_game})")
+                                    # input_controller.click_game_coordinate(click_x_game, click_y_game) # 假设有这个函数
+                                else:
+                                    print(f"    未能从绿色块 {i+1} 识别出文本。")
+
+                            # 保存带有所有框的调试图片
+                            cv2.imwrite("debug_main_found_green_blobs.png", task_desc_roi_with_boxes)
+                            print("带有标记的绿色区域块图片已保存为 debug_main_found_green_blobs.png")
+
                         else:
-                            print("错误：计算得到的任务描述ROI超出了截图范围。请检查配置参数。")
-                            print(f"截图尺寸: W={screenshot_bgr.shape[1]}, H={screenshot_bgr.shape[0]}")
-                            print(f"任务类型ROI: Y={roi_task_type_y}, H={roi_task_type_h}")
-                    # elif "其他任务类型" in recognized_task_type:
-                        # ...
-                else:
-                    print("未能识别出任务类型文本。请检查：")
-                    print("  1. ROI区域是否准确切割到了任务类型文本？(查看 debug_task_type_roi.png)")
-                    print("  2. OCR预处理或PSM模式是否需要调整？")
-                    print("  3. 配置文件中的偏移和尺寸是否准确？")
-            else:
-                print("错误：计算得到的任务类型ROI超出了截图范围。请检查配置参数和模板匹配结果。")
-                print(f"截图尺寸: W={screenshot_bgr.shape[1]}, H={screenshot_bgr.shape[0]}")
+                            print("在任务描述区域中未能找到符合条件的绿色文本块。请检查：")
+                            print("  1. 配置文件中的绿色范围 (NpcNameGreenLowerBound/UpperBound) 是否准确？")
+                            print("  2. 任务描述中当前是否有绿色的NPC名字？")
+                            print("  3. min_contour_area 是否设置过大？")
+                      
+    
+                        
+                    else:
+                        print("错误：计算得到的任务类型ROI超出了截图范围。请检查配置参数和模板匹配结果。")
+                        print(f"截图尺寸: W={screenshot_bgr.shape[1]}, H={screenshot_bgr.shape[0]}")
     
         else:
             print("未能找到 '任务追踪' 标题模板。请检查：")
