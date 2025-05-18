@@ -43,7 +43,7 @@ def run_automation():
     expected_h = config.getint('gamewindow', 'expectedheight')
 
     game_window = find_game_window(window_title, expected_w, expected_h)
-    # 如果 game_window 为 None，后续调用其方法会 AttributeError
+    print(f"DEBUG: find_game_window_returned: {game_window}") # <--- 临时添加这行
 
     activate_window(game_window) 
     pyautogui.sleep(0.2) 
