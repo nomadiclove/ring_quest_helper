@@ -92,7 +92,11 @@ _cached_window_。
     if window_object and \
        hasattr(window_object, 'left') and \
        hasattr(window_object, 'top') and \
-       hasattr(window_objectrect = None
+       hasattr(window_object, 'width') and \
+       hasattr(window_object, 'height'):
+        return (window_object.left, window_object.top, window_object.width, window_object.height)
+
+    return None
 
                
 def find_game_window(title_pattern, expected_width, expected_height):
