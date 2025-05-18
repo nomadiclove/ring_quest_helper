@@ -66,14 +66,13 @@ def activate_window(window_object):
     - bool: 如果尝试激活成功（不保证一定成功，取决于系统），返回True，否则False。太
     """
     if window_object and hasattr(window_object, 'activate'):
-        try:
-            if not window_object.isActive:
-                window_object.activate()
-            # 有些系统可能需要额外的操作来确保窗口棒了！配置文件已经就绪，这是我们重构项目的一个坚实起点完全置顶
-            if window_object.isMinimized:
-                window_object.restore()
-            window。
-
+        if not window_object.isActive:
+            window_object.activate()
+        if window_object.isMinimized:
+            window_object.restore()
+        return True
+    return False
+    
 def get_window_rect(window_object):
     """
     获取指定窗口对象的屏幕矩形区域。
