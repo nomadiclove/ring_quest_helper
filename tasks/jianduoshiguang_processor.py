@@ -63,8 +63,13 @@ def process_jianduoshiguang(
     npc_name_psm = config.getint('ocr_params', 'npcnamersm')
     ocr_upscale = config.getfloat('ocr_params', 'defaultupscalefactor')
     print("DEBUG (proc): 所有特定配置项读取完毕。")
-
+    print("DEBUG (proc): 开始读取UI布局、关键词、颜色和OCR配置...")
+    ui_layout_config = dict(config.items('tasktrackerui_layout'))
+    print(f"DEBUG (proc): ui_layout_config 内容: {ui_layout_config}") # <--- 打印这个字典
+    print("DEBUG (proc): 所有特定配置项读取完毕。")
     # --- 3. 计算并识别 "任务类型" ---
+    print(f"DEBUG (proc): 调用 get_relative_roi_from_layout 为 'TaskType' (小写是 'tasktype')")
+    print(f"DEBUG (proc):   期望的键名: tasktype_offsetx, tasktype_offsety, tasktype_width, tasktype_height")
     task_type_roi_coords = get_relative_roi_from_layout(ui_layout_config, 'tasktype', header_x, header_y)
     if not task_type_roi_coords: 
         print("DEBUG (proc): 计算任务类型ROI失败 (get_relative_roi_from_layout 返回 None)")

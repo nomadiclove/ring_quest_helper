@@ -2,27 +2,7 @@
 
 def get_relative_roi_from_layout(layout_config_dict, element_prefix, 
                                  anchor_x, anchor_y, anchor_w=0, anchor_h=0):
-    """
-    根据UI布局配置字典和锚点坐标/尺寸，计算指定UI元素的相对ROI。
-    所有偏移量都是相对于锚点左上角 (anchor_x, anchor_y) 计算的。
-    如果配置文件中包含 _From_AnchorBottom 或 _From_AnchorRight 类型的偏移，
-    则需要 anchor_w 和 anchor_h。
 
-    参数:
-    - layout_config_dict (dict): 从配置文件加载的包含UI布局信息的字典 
-                                 (例如，'TaskTrackerUI_Layout' 段落的内容)。
-    - element_prefix (str): UI元素在配置项中的前缀 (例如 'TaskType', 'TaskDesc')。
-    - anchor_x (int): 锚点在父图像中的X坐标 (通常是 "任务追踪" 模板的左上角x)。
-    - anchor_y (int): 锚点在父图像中的Y坐标 (通常是 "任务追踪" 模板的左上角y)。
-    - anchor_w (int, optional): 锚点的宽度 (例如 "任务追踪" 模板的宽度)。
-                                用于计算相对于锚点右边或底边的偏移。
-    - anchor_h (int, optional): 锚点的高度 (例如 "任务追踪" 模板的高度)。
-                                用于计算相对于锚点右边或底边的偏移。
-
-    返回:
-    - tuple: (roi_x, roi_y, roi_w, roi_h) UI元素相对于父图像的ROI。
-    - None: 如果配置项缺失或类型错误。
-    """
     if not layout_config_dict or not isinstance(layout_config_dict, dict):
         return None
 
@@ -36,7 +16,7 @@ def get_relative_roi_from_layout(layout_config_dict, element_prefix,
         offset_y_key = f"{element_prefix}_OffsetY".lower()
         width_key = f"{element_prefix}_Width".lower()
         height_key = f"{element_prefix}_Height".lower()
-
+         print(f"DEBUG (locator): 尝试获取键: {offset_x_key}, {offset_y_key}, {width_key}, {height_key} from {layout_config_dict}")
         # 从字典中获取值，并转换为整数
         # 我们假设 config_loader 已经将值作为字符串存入字典，或者这里直接用 getint
         # 为了简单，这里假设字典中的值已经是字符串形式的数字
