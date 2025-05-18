@@ -155,7 +155,7 @@ def main():
                             green_blobs_bboxes = find_contours_by_color(task_desc_roi_image_bgr, 
                                                                         npc_green_lower, 
                                                                         npc_green_upper, 
-                                                                        min_contour_area=5) # 使用较小值
+                                                                        min_contour_area=1) # 使用较小值
 
                             if green_blobs_bboxes:
                                 print(f"在任务描述区域中找到 {len(green_blobs_bboxes)} 个潜在的绿色文本块:")
