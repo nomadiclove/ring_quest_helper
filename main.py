@@ -95,7 +95,6 @@ def run_automation():
         config,              
         input_sim            
     )
-
     print("-" * 30)
     print(f"'见多识广' 任务处理完成，状态: {task_status}")
 
