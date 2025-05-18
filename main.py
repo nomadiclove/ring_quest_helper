@@ -163,25 +163,29 @@ def main():
                                 for i, (gx, gy, gw, gh) in enumerate(green_blobs_bboxes):
                                     print(f"  绿色块 {i+1}: X={gx}, Y={gy}, W={gw}, H={gh} (相对于任务描述ROI)")
                                     cv2.rectangle(task_desc_roi_with_boxes, (gx, gy), (gx + gw, gy + gh), (0, 0, 255), 1)
-                                    green_blob_image = task_desc_roi_image_bgr[gy:gy+gh, gx:gx+gw]
+                                    # green_blob_image = task_desc_roi_image_bgr[gy:gy+gh, gx:gx+gw]
+                                    ocr_gy_end = min(gy + gh, task_desc_roi_image_bgr.shape[0])
+                                    ocr_gx_end = min(gx + gw, task_desc_roi_image_bgr.shape[1])
 
-                                    cv2.imwrite(f"debug_green_blob_{i+1}.png", green_blob_image)
+                                    if gy < ocr_gy_end and gx < ocr_gx_end: # 确保高度和宽度有效
+                                        green_blob_image_for_ocr = task_desc_roi_image_bgr[gy:ocr_gy_end, gx:ocr_gx_end]
+                                    # cv2.imwrite(f"debug_green_blob_{i+1}.png", green_blob_image)
 
-                                    npc_name_text = recognize_text_from_image_data(green_blob_image, lang='chi_sim', psm=8)
-                                    if npc_name_text:
-                                        print(f"    识别出的文本: '{npc_name_text}'")
-                                        # TODO: 在这里判断是否是目标NPC名字 (例如 "灵儿")
-                                        # if "灵儿" in npc_name_text:
-                                        #     click_x_game = roi_desc_x + gx + gw // 2
-                                        #     click_y_game = roi_desc_y + gy + gh // 2
-                                        #     print(f"    准备点击NPC: '{npc_name_text}' 在游戏画面坐标: ({click_x_game}, {click_y_game})")
-                                        #     # pyautogui.click(click_x_game + inner_game_area_rect[0], click_y_game + inner_game_area_rect[1])
-                                        #     # break # 假设找到并点击后就结束这个任务的处理
+                                        npc_name_text = recognize_text_from_image_data(green_blob_image, lang='chi_sim', psm=8)
+                                        if npc_name_text:
+                                            print(f"    识别出的文本: '{npc_name_text}'")
+                                            # TODO: 在这里判断是否是目标NPC名字 (例如 "灵儿")
+                                            # if "灵儿" in npc_name_text:
+                                            #     click_x_game = roi_desc_x + gx + gw // 2
+                                            #     click_y_game = roi_desc_y + gy + gh // 2
+                                            #     print(f"    准备点击NPC: '{npc_name_text}' 在游戏画面坐标: ({click_x_game}, {click_y_game})")
+                                            #     # pyautogui.click(click_x_game + inner_game_area_rect[0], click_y_game + inner_game_area_rect[1])
+                                            #     # break # 假设找到并点击后就结束这个任务的处理
+                                        else:
+                                            print(f"    未能从绿色块 {i+1} 识别出文本。")
+
                                     else:
-                                        print(f"    未能从绿色块 {i+1} 识别出文本。")
-
-                                cv2.imwrite("debug_main_found_green_blobs.png", task_desc_roi_with_boxes)
-                                print("带有标记的绿色区域块图片已保存为 debug_main_found_green_blobs.png")
+                                        print(f"绿色块 {i+1} 的边界框无效或太小，无法切割进行OCR。")
                             else:
                                 print("在任务描述区域中未能找到符合条件的绿色文本块。请检查相关配置。")
                         else:
