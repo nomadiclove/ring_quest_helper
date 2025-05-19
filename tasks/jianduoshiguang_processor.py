@@ -1,12 +1,14 @@
 # tasks/jianduoshiguang_processor.py
 import cv2
 import os
-import pyautogui 
+import pyautogui # 仅用于可能的延时
 
+# 从core和game_elements导入我们需要的函数
 from core.image_matcher import find_template_in_image
 from core.color_filter import find_contours_by_bgr_range
-from core.text_recognizer import recognize_text_with_paddle # Using PaddleOCR
+from core.text_recognizer import recognize_text_with_paddle # 使用PaddleOCR
 from game_elements.task_panel_analyzer import get_relative_roi_from_layout
+# config_loader 会由调用者传入加载好的config对象
 
 def process_jianduoshiguang(
     main_game_image_bgr,
@@ -33,6 +35,7 @@ def process_jianduoshiguang(
     print(f"DEBUG (proc): 'Task Tracker' template found: X={header_x}, Y={header_y}, W={header_w}, H={header_h}")
 
     print("DEBUG (proc): Reading UI layout, keywords, color, and OCR configs...")
+    # configparser的get方法默认会将键名转为小写，所以字典的键也是小写
     ui_layout_config = dict(config.items('tasktrackerui_layout'))
 
     jdg_keywords_str = config.get('taskkeywords', 'jianduoshiguang')
@@ -47,17 +50,15 @@ def process_jianduoshiguang(
     green_upper_str = config.get('tasktrackerui_layout', 'npcnamegreenupperbound')
     green_upper = tuple(map(int, green_upper_str.split(',')))
 
-    task_type_psm = config.getint('ocr_params', 'tasktypepsm')
-    npc_name_psm = config.getint('ocr_params', 'npcnamersm')
-    # default_ocr_upscale = config.getfloat('ocr_params', 'defaultupscalefactor') # Not used if specific ones are defined
-    task_type_ocr_upscale = config.getfloat('ocr_params', 'tasktypeupscalefactor', fallback=1.0)
-    npc_ocr_upscale = config.getfloat('ocr_params', 'npcnameupscalefactor', fallback=1.0) # Fallback to 1.0 if not specified
-    print("DEBUG (proc): All specific configs read.")
+    # PSM参数对于PaddleOCR不是直接使用，但可以保留配置项以备Tesseract对比或未来需要
+    # task_type_psm = config.getint('ocr_params', 'tasktypepsm') 
+    # npc_name_psm = config.getint('ocr_params', 'npcnamersm')
+    print("DEBUG (proc): All specific configs read from passed config object.")
 
     task_type_roi_coords = get_relative_roi_from_layout(ui_layout_config, 'tasktype', header_x, header_y)
     if not task_type_roi_coords: 
         print("DEBUG (proc): Failed to calculate TaskType ROI.")
-        return "config_error_tasktype_roi" # Or let it raise error from get_relative_roi
+        return "config_error_tasktype_roi"
 
     tt_x, tt_y, tt_w, tt_h = task_type_roi_coords
     if not (tt_x >= 0 and tt_y >= 0 and tt_x + tt_w <= main_game_image_bgr.shape[1] and tt_y + tt_h <= main_game_image_bgr.shape[0]):
@@ -67,11 +68,11 @@ def process_jianduoshiguang(
     task_type_img_bgr = main_game_image_bgr[tt_y : tt_y + tt_h, tt_x : tt_x + tt_w]
     cv2.imwrite(os.path.join(project_root, "debug_task_type_roi_from_task.png"), task_type_img_bgr)
 
-    recognized_task_type = recognize_text_with_paddle(task_type_img_bgr) # Using PaddleOCR with its defaults
-    if not recognized_task_type: 
+    recognized_task_type = recognize_text_with_paddle(task_type_img_bgr) 
+    if not recognized_task_type: # PaddleOCR可能返回空字符串或None
         print("DEBUG (proc): PaddleOCR failed to recognize TaskType text.")
         return "ocr_failed_tasktype"
-    print(f"DEBUG (proc): Recognized TaskType text: '{recognized_task_type}'")
+    print(f"DEBUG (proc): Recognized TaskType text (PaddleOCR): '{recognized_task_type}'")
 
     is_target_task = any(keyword in recognized_task_type for keyword in jdg_keywords if keyword)
     if not is_target_task:
@@ -94,7 +95,8 @@ def process_jianduoshiguang(
     print("DEBUG (proc): TaskDesc ROI cut and saved.")
 
     print(f"DEBUG (proc): Finding green blobs in TaskDesc ROI. Color range L:{green_lower} U:{green_upper}")
-    green_blobs = find_contours_by_bgr_range(task_desc_img_bgr, green_lower, green_upper, min_contour_area=5)
+    # min_contour_area 设为较小值，例如 1，以捕获细小的文字部分
+    green_blobs = find_contours_by_bgr_range(task_desc_img_bgr, green_lower, green_upper, min_contour_area=1) 
 
     if not green_blobs: 
         print("DEBUG (proc): No green blobs found in TaskDesc ROI.")
@@ -115,12 +117,8 @@ def process_jianduoshiguang(
             continue
 
         green_blob_for_ocr = task_desc_img_bgr[gy:ocr_gy_end, gx:ocr_gx_end]
-        # cv2.imwrite(os.path.join(project_root, f"debug_npc_blob_{i+1}.png"), green_blob_for_ocr)
+        # cv2.imwrite(os.path.join(project_root, f"debug_npc_blob_{i+1}.png"), green_blob_for_ocr) # 可选调试
 
-        # For PaddleOCR, it handles its own pre-processing, so upscale_factor might not be directly used unless PaddleOCR API supports it or we do it before passing.
-        # The recognize_text_with_paddle function currently does not take upscale_factor.
-        # If needed, we would upscale green_blob_for_ocr BEFORE passing it to recognize_text_with_paddle.
-        # For now, let's see Paddle's raw performance on the small blob.
         npc_text = recognize_text_with_paddle(green_blob_for_ocr) 
         if not npc_text: 
             print(f"DEBUG (proc):    Green blob {i+1} OCR (Paddle) failed to recognize text.")
@@ -128,7 +126,7 @@ def process_jianduoshiguang(
         print(f"DEBUG (proc):    Green blob {i+1} OCR (Paddle) result: '{npc_text}'")
 
         for npc_keyword in npc_keywords:
-            if npc_keyword in npc_text:
+            if npc_keyword and npc_keyword in npc_text: #确保npc_keyword不为空
                 print(f"DEBUG (proc):    Matched NPC keyword '{npc_keyword}' in '{npc_text}'!")
                 click_x_game_relative = td_x + gx + gw // 2
                 click_y_game_relative = td_y + gy + gh // 2
@@ -137,7 +135,7 @@ def process_jianduoshiguang(
                 abs_screen_y = game_screen_abs_rect[1] + click_y_game_relative
 
                 print(f"DEBUG (proc):    Preparing to click NPC '{target_npc_name_normalized}' at game_rel({click_x_game_relative},{click_y_game_relative}), screen_abs({abs_screen_x},{abs_screen_y})")
-                # input_sim.click_screen_coords(abs_screen_x, abs_screen_y) # Actual click commented out
+                # input_sim.click_screen_coords(abs_screen_x, abs_screen_y) # 实际点击先注释
                 print("DEBUG (proc):    (Simulated click is commented out)") 
                 found_npc_to_click = True
                 break 
