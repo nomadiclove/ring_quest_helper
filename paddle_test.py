@@ -2,6 +2,7 @@ from paddleocr import PaddleOCR
 import cv2
 import matplotlib.pyplot as plt
 import time
+import paddle  # 确保这行在文件开头，且没有被注释掉
 
 # 配置 PaddleOCR（使用 GPU 版本）
 ocr = PaddleOCR(
