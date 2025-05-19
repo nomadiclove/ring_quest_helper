@@ -66,7 +66,7 @@ def visualize_ocr_result(img, result):
 
 if __name__ == "__main__":
     # 替换为你的图片路径
-    image_path = "debug_task_desc_roi_from_task.png"
+    image_path = "renshen.png"
 
     # 检查 GPU 是否可用
     if paddle.is_compiled_with_cuda():
