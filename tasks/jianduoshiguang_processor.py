@@ -1,50 +1,38 @@
 # tasks/jianduoshiguang_processor.py
 import cv2
 import os
-import pyautogui # 仅用于可能的延时
+import pyautogui 
 
-# 从core和game_elements导入我们需要的函数
 from core.image_matcher import find_template_in_image
 from core.color_filter import find_contours_by_bgr_range
-from core.text_recognizer import recognize_text
-# input_simulator 会作为参数传入，config也是
+from core.text_recognizer import recognize_text_with_paddle # Using PaddleOCR
 from game_elements.task_panel_analyzer import get_relative_roi_from_layout
 
 def process_jianduoshiguang(
     main_game_image_bgr,
     game_screen_abs_rect,
-    config, # 已加载的 ConfigParser 对象
-    input_sim # input_simulator 模块
+    config, 
+    input_sim 
     ):
-    """
-    处理"见多识广"类型任务的逻辑。
-    返回状态字符串。
-    """
-    print("DEBUG (proc): 进入 process_jianduoshiguang")
+    print("DEBUG (proc): Entering process_jianduoshiguang")
 
-    # --- 0. 获取必要的配置和项目根路径 ---
-    # 假设 config 对象中已经由 main.py 设置了 'paths'/'projectroot'
-    # 如果没有，则尝试从当前文件路径推断 (这在 tasks/ 目录下可能不准，最好由main.py传入)
-    project_root = config.get("paths", "projectroot", 
-                              fallback=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    project_root = config.get("paths", "projectroot")
     print(f"DEBUG (proc): Project root: {project_root}")
 
-    # --- 1. 定位 "任务追踪" 锚点 ---
-    print("DEBUG (proc): 开始读取任务追踪模板配置...")
-    header_template_rel_path = config.get('tasktrackerui_templates', 'headertemplatepath') # 相对于项目根目录
+    print("DEBUG (proc): Reading task tracker template config...")
+    header_template_rel_path = config.get('tasktrackerui_templates', 'headertemplatepath')
     header_template_path = os.path.join(project_root, header_template_rel_path)
     header_match_threshold = config.getfloat('tasktrackerui_templates', 'headermatchthreshold')
-    print(f"DEBUG (proc): 模板路径: {header_template_path}, 阈值: {header_match_threshold}")
+    print(f"DEBUG (proc): Template path: {header_template_path}, Threshold: {header_match_threshold}")
 
     header_match = find_template_in_image(main_game_image_bgr, header_template_path, header_match_threshold)
     if not header_match:
-        print("DEBUG (proc): 未能找到 '任务追踪' 模板。")
+        print("DEBUG (proc): Failed to find 'Task Tracker' template.")
         return "template_not_found_in_processor"
     header_x, header_y, header_w, header_h, _ = header_match
-    print(f"DEBUG (proc): '任务追踪' 模板找到: X={header_x}, Y={header_y}, W={header_w}, H={header_h}")
+    print(f"DEBUG (proc): 'Task Tracker' template found: X={header_x}, Y={header_y}, W={header_w}, H={header_h}")
 
-    # --- 2. 获取UI布局配置、关键词配置、颜色范围、OCR参数 ---
-    print("DEBUG (proc): 开始读取UI布局、关键词、颜色和OCR配置...")
+    print("DEBUG (proc): Reading UI layout, keywords, color, and OCR configs...")
     ui_layout_config = dict(config.items('tasktrackerui_layout'))
 
     jdg_keywords_str = config.get('taskkeywords', 'jianduoshiguang')
@@ -61,108 +49,102 @@ def process_jianduoshiguang(
 
     task_type_psm = config.getint('ocr_params', 'tasktypepsm')
     npc_name_psm = config.getint('ocr_params', 'npcnamersm')
-    ocr_upscale = config.getfloat('ocr_params', 'defaultupscalefactor')
-    print("DEBUG (proc): 所有特定配置项读取完毕。")
-    print("DEBUG (proc): 开始读取UI布局、关键词、颜色和OCR配置...")
-    ui_layout_config = dict(config.items('tasktrackerui_layout'))
-    print(f"DEBUG (proc): ui_layout_config 内容: {ui_layout_config}") # <--- 打印这个字典
-    print("DEBUG (proc): 所有特定配置项读取完毕。")
-    # --- 3. 计算并识别 "任务类型" ---
-    print(f"DEBUG (proc): 调用 get_relative_roi_from_layout 为 'TaskType' (小写是 'tasktype')")
-    print(f"DEBUG (proc):   期望的键名: tasktype_offsetx, tasktype_offsety, tasktype_width, tasktype_height")
+    # default_ocr_upscale = config.getfloat('ocr_params', 'defaultupscalefactor') # Not used if specific ones are defined
+    task_type_ocr_upscale = config.getfloat('ocr_params', 'tasktypeupscalefactor', fallback=1.0)
+    npc_ocr_upscale = config.getfloat('ocr_params', 'npcnameupscalefactor', fallback=1.0) # Fallback to 1.0 if not specified
+    print("DEBUG (proc): All specific configs read.")
+
     task_type_roi_coords = get_relative_roi_from_layout(ui_layout_config, 'tasktype', header_x, header_y)
     if not task_type_roi_coords: 
-        print("DEBUG (proc): 计算任务类型ROI失败 (get_relative_roi_from_layout 返回 None)")
-        return "config_error_tasktype_roi"
+        print("DEBUG (proc): Failed to calculate TaskType ROI.")
+        return "config_error_tasktype_roi" # Or let it raise error from get_relative_roi
 
     tt_x, tt_y, tt_w, tt_h = task_type_roi_coords
     if not (tt_x >= 0 and tt_y >= 0 and tt_x + tt_w <= main_game_image_bgr.shape[1] and tt_y + tt_h <= main_game_image_bgr.shape[0]):
-        print(f"DEBUG (proc): 任务类型ROI ({tt_x},{tt_y},{tt_w},{tt_h}) 超出截图范围 ({main_game_image_bgr.shape[1]}x{main_game_image_bgr.shape[0]})")
+        print(f"DEBUG (proc): TaskType ROI out of bounds.")
         return "roi_out_of_bounds_tasktype"
 
     task_type_img_bgr = main_game_image_bgr[tt_y : tt_y + tt_h, tt_x : tt_x + tt_w]
-    # cv2.imwrite(os.path.join(project_root, "debug_task_type_roi_from_task.png"), task_type_img_bgr)
+    cv2.imwrite(os.path.join(project_root, "debug_task_type_roi_from_task.png"), task_type_img_bgr)
 
-    recognized_task_type = recognize_text(task_type_img_bgr, lang='chi_sim', psm=task_type_psm, upscale_factor=ocr_upscale)
+    recognized_task_type = recognize_text_with_paddle(task_type_img_bgr) # Using PaddleOCR with its defaults
     if not recognized_task_type: 
-        print("DEBUG (proc): OCR未能识别出任务类型文本。")
+        print("DEBUG (proc): PaddleOCR failed to recognize TaskType text.")
         return "ocr_failed_tasktype"
-    print(f"DEBUG (proc): 识别出的任务类型文本: '{recognized_task_type}'")
+    print(f"DEBUG (proc): Recognized TaskType text: '{recognized_task_type}'")
 
-    is_target_task = False
-    for keyword in jdg_keywords:
-        if keyword in recognized_task_type:
-            is_target_task = True
-            break
+    is_target_task = any(keyword in recognized_task_type for keyword in jdg_keywords if keyword)
     if not is_target_task:
-        print(f"DEBUG (proc): 识别的任务类型 '{recognized_task_type}' 与关键词不匹配。")
+        print(f"DEBUG (proc): Recognized TaskType '{recognized_task_type}' does not match keywords.")
         return "task_type_mismatch"
-    print("DEBUG (proc): 任务类型匹配成功!")
+    print("DEBUG (proc): TaskType matched!")
 
-    # --- 4. 计算并获取 "任务描述" ROI ---
     task_desc_roi_coords = get_relative_roi_from_layout(ui_layout_config, 'taskdesc', header_x, header_y)
     if not task_desc_roi_coords: 
-        print("DEBUG (proc): 计算任务描述ROI失败 (get_relative_roi_from_layout 返回 None)")
+        print("DEBUG (proc): Failed to calculate TaskDesc ROI.")
         return "config_error_taskdesc_roi"
 
     td_x, td_y, td_w, td_h = task_desc_roi_coords
     if not (td_x >= 0 and td_y >= 0 and td_x + td_w <= main_game_image_bgr.shape[1] and td_y + td_h <= main_game_image_bgr.shape[0]):
-        print(f"DEBUG (proc): 任务描述ROI ({td_x},{td_y},{td_w},{td_h}) 超出截图范围。")
+        print(f"DEBUG (proc): TaskDesc ROI out of bounds.")
         return "roi_out_of_bounds_taskdesc"
 
     task_desc_img_bgr = main_game_image_bgr[td_y : td_y + td_h, td_x : td_x + td_w]
-    cv2.imwrite(os.path.join(project_root, "debug_task_desc_roi_from_task.png"), task_desc_img_bgr) # 保留这个，重要
-    print("DEBUG (proc): 任务描述ROI已切割并保存。")
+    cv2.imwrite(os.path.join(project_root, "debug_task_desc_roi_from_task.png"), task_desc_img_bgr)
+    print("DEBUG (proc): TaskDesc ROI cut and saved.")
 
-    # --- 5. 在 "任务描述" ROI 中查找绿色NPC名字 ---
-    print(f"DEBUG (proc): 开始在任务描述ROI中查找绿色块，颜色范围 L:{green_lower} U:{green_upper}")
-    green_blobs = find_contours_by_bgr_range(task_desc_img_bgr, green_lower, green_upper, min_contour_area=5) # 使用较小min_area
+    print(f"DEBUG (proc): Finding green blobs in TaskDesc ROI. Color range L:{green_lower} U:{green_upper}")
+    green_blobs = find_contours_by_bgr_range(task_desc_img_bgr, green_lower, green_upper, min_contour_area=5)
 
     if not green_blobs: 
-        print("DEBUG (proc): 未在任务描述ROI中找到任何绿色块。")
+        print("DEBUG (proc): No green blobs found in TaskDesc ROI.")
         return "npc_not_found_color"
 
-    print(f"DEBUG (proc): 找到 {len(green_blobs)} 个潜在的绿色块。")
+    print(f"DEBUG (proc): Found {len(green_blobs)} potential green blob(s).")
     found_npc_to_click = False
-    task_desc_roi_with_boxes_drawn = task_desc_img_bgr.copy() # 用于画框
+    task_desc_roi_with_boxes_drawn = task_desc_img_bgr.copy()
 
     for i, (gx, gy, gw, gh) in enumerate(green_blobs):
-        print(f"DEBUG (proc):  处理绿色块 {i+1}: X={gx}, Y={gy}, W={gw}, H={gh}")
+        print(f"DEBUG (proc):  Processing green blob {i+1}: X={gx}, Y={gy}, W={gw}, H={gh}")
         cv2.rectangle(task_desc_roi_with_boxes_drawn, (gx, gy), (gx + gw, gy + gh), (0, 0, 255), 1)
 
         ocr_gy_end = min(gy + gh, task_desc_img_bgr.shape[0])
         ocr_gx_end = min(gx + gw, task_desc_img_bgr.shape[1])
         if gy >= ocr_gy_end or gx >= ocr_gx_end : 
-            print(f"DEBUG (proc):    绿色块 {i+1} 边界无效，跳过OCR。")
+            print(f"DEBUG (proc):    Green blob {i+1} has invalid bounds, skipping OCR.")
             continue
 
         green_blob_for_ocr = task_desc_img_bgr[gy:ocr_gy_end, gx:ocr_gx_end]
         # cv2.imwrite(os.path.join(project_root, f"debug_npc_blob_{i+1}.png"), green_blob_for_ocr)
 
-        npc_text = recognize_text(green_blob_for_ocr, lang='chi_sim', psm=npc_name_psm, upscale_factor=ocr_upscale)
+        # For PaddleOCR, it handles its own pre-processing, so upscale_factor might not be directly used unless PaddleOCR API supports it or we do it before passing.
+        # The recognize_text_with_paddle function currently does not take upscale_factor.
+        # If needed, we would upscale green_blob_for_ocr BEFORE passing it to recognize_text_with_paddle.
+        # For now, let's see Paddle's raw performance on the small blob.
+        npc_text = recognize_text_with_paddle(green_blob_for_ocr) 
         if not npc_text: 
-            print(f"DEBUG (proc):    绿色块 {i+1} OCR未能识别出文本。")
+            print(f"DEBUG (proc):    Green blob {i+1} OCR (Paddle) failed to recognize text.")
             continue
-        print(f"DEBUG (proc):    绿色块 {i+1} OCR结果: '{npc_text}'")
+        print(f"DEBUG (proc):    Green blob {i+1} OCR (Paddle) result: '{npc_text}'")
 
         for npc_keyword in npc_keywords:
             if npc_keyword in npc_text:
-                print(f"DEBUG (proc):    匹配到NPC关键词 '{npc_keyword}' in '{npc_text}'!")
+                print(f"DEBUG (proc):    Matched NPC keyword '{npc_keyword}' in '{npc_text}'!")
                 click_x_game_relative = td_x + gx + gw // 2
                 click_y_game_relative = td_y + gy + gh // 2
 
                 abs_screen_x = game_screen_abs_rect[0] + click_x_game_relative
                 abs_screen_y = game_screen_abs_rect[1] + click_y_game_relative
 
-                print(f"DEBUG (proc):    准备点击NPC '{target_npc_name_normalized}' 在游戏内({click_x_game_relative},{click_y_game_relative}), 屏幕({abs_screen_x},{abs_screen_y})")
-                # input_sim.click_screen_coords(abs_screen_x, abs_screen_y) # 实际点击先注释
-                print("DEBUG (proc):    (模拟点击已注释)") 
+                print(f"DEBUG (proc):    Preparing to click NPC '{target_npc_name_normalized}' at game_rel({click_x_game_relative},{click_y_game_relative}), screen_abs({abs_screen_x},{abs_screen_y})")
+                # input_sim.click_screen_coords(abs_screen_x, abs_screen_y) # Actual click commented out
+                print("DEBUG (proc):    (Simulated click is commented out)") 
                 found_npc_to_click = True
                 break 
         if found_npc_to_click:
             break 
 
-    cv2.imwrite(os.path.join(project_root, "debug_task_desc_with_green_blobs.png"), task_desc_roi_with_boxes_drawn) # 保存画了框的图
-    print("DEBUG (proc): 任务描述ROI (可能带有绿色块标记) 已保存。")
+    cv2.imwrite(os.path.join(project_root, "debug_task_desc_with_green_blobs.png"), task_desc_roi_with_boxes_drawn)
+    print("DEBUG (proc): TaskDesc ROI (with potential green blob boxes) saved.")
 
     return "npc_clicked" if found_npc_to_click else "npc_not_found_ocr"
